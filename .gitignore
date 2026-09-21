@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+.venv312/
+env/
+
+# Local datasets
+datasets/
+
+# Generated datasets and arrays
+processed/
+
+# Trained models / weights
+models/*.keras
+models/*.h5
+models/*.weights.h5
+models/*.pt
+*.pt
+
+# NumPy data
+*.npy
+
+# Local secrets / env
+.env
+.env.*
+
+# Generated evaluation and demo outputs
+results/*.jpg
+results/*.mp4
+results/*.jsonl
+results/*/
+
+# Ultralytics runs
+runs/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local build/cache directories
+.dist/

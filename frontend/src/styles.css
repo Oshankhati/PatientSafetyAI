@@ -1,0 +1,86 @@
+:root {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #e8eef7;
+  background: #0d1520;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.page { max-width: 1100px; margin: 0 auto; padding: 24px; }
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.04em; }
+.sub { margin: 4px 0 0; color: #93a4bb; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.card {
+  background: #152233;
+  border: 1px solid #24364d;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+h2 { margin: 0 0 10px; font-size: 0.95rem; color: #9fb4ce; text-transform: uppercase; letter-spacing: 0.08em; }
+.score { font-size: 2.4rem; margin: 0; font-weight: 600; }
+.muted { color: #8aa0b8; font-size: 0.9rem; }
+.banner {
+  background: #3a1f1f;
+  border: 1px solid #7a3030;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+button {
+  background: #2b6cb0;
+  color: white;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #2a3b50;
+  margin: 8px 0;
+}
+.pill.ok { background: #1e5a3a; }
+.pill.mid { background: #6b4e16; }
+.pill.warn { background: #7a3b12; }
+.pill.danger { background: #8b1e1e; }
+.monitor-box {
+  min-height: 120px;
+  border: 1px dashed #35506d;
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 220px;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  background: #0f1a27;
+}
+.skel {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  background: #0b1520;
+}
+.monitor-meta p { margin: 6px 0; }
+@media (max-width: 800px) {
+  .monitor-box { grid-template-columns: 1fr; }
+}
+.events { list-style: none; padding: 0; margin: 0; }
+.events li {
+  display: grid;
+  grid-template-columns: 80px 1fr 1fr;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #24364d;
+}
+.time { font-variant-numeric: tabular-nums; color: #9fb4ce; }
+@media (max-width: 800px) {
+  .grid { grid-template-columns: 1fr; }
+}

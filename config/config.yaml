@@ -1,0 +1,97 @@
+# PatientSafetyAI central configuration
+# Paths are relative to the project root unless absolute.
+
+project:
+  name: PatientSafetyAI
+  description: Privacy-conscious fall-risk monitoring prototype (academic)
+
+paths:
+  models_dir: models
+  processed_dir: processed
+  results_dir: results
+  datasets_dir: datasets
+
+pose:
+  # Lightweight YOLO Pose model for CPU-friendly inference
+  model_path: models/yolo11n-pose.pt
+  device: cpu          # cpu | 0 | cuda
+  conf_threshold: 0.25 # person detection confidence
+  keypoint_conf_threshold: 0.30
+  imgsz: 640
+  # Persist person IDs across frames when Ultralytics tracking is available
+  enable_tracking: true
+  tracker: bytetrack.yaml
+
+temporal:
+  sequence_length: 20
+  stride: 5
+  # UP-Fall LSTM baseline feature width (33 joints * XYZ)
+  upfall_feature_dim: 99
+  # YOLO COCO-Pose keypoint count
+  yolo_keypoint_count: 17
+
+model:
+  # Existing UP-Fall LSTM baseline (binary NORMAL/FALL)
+  path: models/upfall_lstm_best.keras
+  input_shape: [20, 99]
+  # Class semantics observed in cleaned UP-Fall CSVs (A1–A5 fall recordings):
+  # label 0 ≈ fall phase frames (minority); label 1 ≈ non-fall frames within recording.
+  class_names:
+    0: fall
+    1: non_fall
+  # Operating point on P(class=1). Sweep with scripts/tune_decision_threshold.py
+  # before changing this; 0.5 is the published baseline.
+  decision_threshold: 0.5
+
+risk:
+  # Prototype risk thresholds — configurable, not clinically validated
+  low_max: 0.39
+  medium_max: 0.69
+  high_max: 0.89
+  fall_min: 0.90
+  min_consecutive_frames: 5
+  fall_threshold: 0.90
+  high_risk_threshold: 0.70
+
+risk_weights:
+  # Weights are renormalized if LSTM is unavailable.
+  lstm: 0.35
+  posture: 0.20
+  vertical: 0.15
+  height: 0.15
+  aspect: 0.10
+  zone: 0.05
+  vertical_ref: 0.35
+  height_ref: 0.35
+
+rooms:
+  - id: ICU-101
+    name: ICU Bay 101
+    patient_id: Patient 01
+
+patients:
+  - id: Patient 01
+    room_id: ICU-101
+    status: MONITORING
+
+zones:
+  # Placeholder rectangular zones in normalized image coords [x1,y1,x2,y2]
+  # Replace per room via API / config later.
+  bed_zone: [0.25, 0.20, 0.75, 0.70]
+  safe_zone: [0.10, 0.10, 0.90, 0.90]
+  floor_zone: [0.00, 0.70, 1.00, 1.00]
+  exit_zone: [0.00, 0.00, 0.15, 1.00]
+
+privacy:
+  store_raw_video: false
+  store_snapshots: false
+  store_keypoints: true
+
+api:
+  host: 0.0.0.0
+  port: 8000
+
+demo:
+  display: true
+  show_fps: true
+  max_display_width: 1280
