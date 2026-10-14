@@ -18,9 +18,11 @@ class PersonSelector:
             for person in frame.persons:
                 if person.person_id == preferred:
                     return person
-            # The tracked person is no longer visible. Release the lock so the
-            # monitor can recover to a newly visible person when they re-enter.
+            # Do not silently swap to a different tracked person when the current
+            # target is missing from the frame. This keeps ID assignment stable and
+            # prevents mixing tracks across adjacent frames.
             self.locked_id = None
+            return None
 
         person = frame.select_person(person_id=None)
         if person is None:
