@@ -5,7 +5,10 @@ print("=" * 70)
 print("UP-FALL DATA NORMALIZATION")
 print("=" * 70)
 
-BASE_DIR = Path(r"D:\PatientSafetyAI\processed\sequences\split")
+# BASE_DIR = Path(r"D:\PatientSafetyAI\processed\sequences\split")
+BASE_DIR = Path(
+    r"C:\Projects\PatientSafetyAI\datasets\processed\sequences\split"
+)
 
 # ------------------------------------------------------------
 # LOAD DATA

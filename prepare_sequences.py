@@ -6,9 +6,16 @@ from pathlib import Path
 # UP-FALL SEQUENCE PREPARATION
 # ============================================================
 
-DATASET_DIR = Path(r"D:\PatientSafetyAI\processed\UP-Fall")
-OUTPUT_DIR = Path(r"D:\PatientSafetyAI\processed\sequences")
+# DATASET_DIR = Path(r"D:\PatientSafetyAI\processed\UP-Fall")
+# OUTPUT_DIR = Path(r"D:\PatientSafetyAI\processed\sequences")
 
+DATASET_DIR = Path(
+    r"C:\Projects\PatientSafetyAI\datasets\processed\UP-Fall"
+)
+
+OUTPUT_DIR = Path(
+    r"C:\Projects\PatientSafetyAI\datasets\processed\sequences"
+)
 # Number of consecutive frames used as one sample
 WINDOW_SIZE = 20
 
