@@ -37,7 +37,31 @@ const levelOf = (label, score, th) => {
   return score / 100 >= th.high ? 'High' : score / 100 >= th.medium ? 'Medium' : 'Normal';
 };
 
-const kindOf = text => (/fall/i.test(text) ? 'fall' : /signal|lost|away|offline/i.test(text) ? 'away' : /high|unsafe|risk|critical|alert/i.test(text) ? 'high' : 'info');
+const kindOf = text => {
+  const t = String(text).toUpperCase();
+
+  if (t.includes('FALL_DETECTED') || t === 'FALL') {
+    return 'fall';
+  }
+
+  if (
+    t.includes('SIGNAL') ||
+    t.includes('OFFLINE') ||
+    t.includes('LEFT_SAFE_ZONE')
+  ) {
+    return 'away';
+  }
+
+  if (
+    t.includes('PRE_FALL') ||
+    t.includes('HIGH_RISK') ||
+    t.includes('CRITICAL')
+  ) {
+    return 'high';
+  }
+
+  return 'info';
+};
 const TAG = { fall: 'Fall', high: 'High', away: 'Away' };
 const CARD = { fall: 'Fall detected', high: 'High risk', away: 'Signal lost' };
 

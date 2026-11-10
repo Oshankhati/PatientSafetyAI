@@ -1,224 +1,135 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Layout from './components/Layout';
+import Icon from './components/Icon';
+import useMonitoring from './hooks/useMonitoring';
+import { buildServices, buildViewModel } from './data/model';
+import { DEFAULT_SETTINGS } from './data/defaults';
+import Dashboard from './pages/Dashboard';
+import Patients from './pages/Patients';
+import PatientDetail from './pages/PatientDetail';
+import LiveMonitoring from './pages/LiveMonitoring';
+import Alerts from './pages/Alerts';
+import Events from './pages/Events';
+import EventDetail from './pages/EventDetail';
+import RoomMonitoring from './pages/RoomMonitoring';
+import Analytics from './pages/Analytics';
+import Settings from './pages/Settings';
+import SystemStatus from './pages/SystemStatus';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
 
-const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8001";
-
-const SKELETON = [
-  [0, 1],
-  [0, 2],
-  [1, 3],
-  [2, 4],
-  [5, 6],
-  [5, 7],
-  [7, 9],
-  [6, 8],
-  [8, 10],
-  [5, 11],
-  [6, 12],
-  [11, 12],
-  [11, 13],
-  [13, 15],
-  [12, 14],
-  [14, 16],
-];
-
-function levelClass(level) {
-  if (!level) return "pill";
-  if (level.includes("FALL")) return "pill danger";
-  if (level.includes("HIGH")) return "pill warn";
-  if (level.includes("MEDIUM") || level.includes("PRE")) return "pill mid";
-  return "pill ok";
+function useStored(key, initial) {
+  const [v, setV] = useState(() => { try { return { ...initial, ...JSON.parse(localStorage.getItem(key)) }; } catch { return initial; } });
+  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage unavailable */ } }, [key, v]);
+  return [v, setV];
 }
 
-function SkeletonView({ skeleton }) {
-  const canvasRef = useRef(null);
+function DashboardApp({ staff }) {
+  const raw = useMonitoring();
+  const [settings, setSettings] = useStored('psai.settings.v1', DEFAULT_SETTINGS);
+  const [acks, setAcks] = useStored('psai.acks.v1', {});
+  const [view, setView] = useState({ page: 'dashboard' });
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const w = canvas.width;
-    const h = canvas.height;
-    ctx.fillStyle = "#0b1520";
-    ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = "#2a425c";
-    ctx.setLineDash([4, 6]);
-    ctx.strokeRect(24, 16, w - 48, h - 32);
-    ctx.setLineDash([]);
-    if (!skeleton?.keypoints_normalized) {
-      ctx.fillStyle = "#8aa0b8";
-      ctx.font = "14px Segoe UI, sans-serif";
-      ctx.fillText("Waiting for COCO-17 keypoints (no camera image stored).", 36, h / 2);
-      return;
-    }
-    const pts = skeleton.keypoints_normalized;
-    const conf = skeleton.keypoint_confidence || pts.map(() => 1);
-    const toXY = (i) => [pts[i][0] * w, pts[i][1] * h];
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "#f0a202";
-    SKELETON.forEach(([a, b]) => {
-      if (conf[a] < 0.3 || conf[b] < 0.3) return;
-      const [x1, y1] = toXY(a);
-      const [x2, y2] = toXY(b);
-      if ((x1 === 0 && y1 === 0) || (x2 === 0 && y2 === 0)) return;
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    });
-    pts.forEach((pt, i) => {
-      if (conf[i] < 0.3) return;
-      ctx.beginPath();
-      ctx.fillStyle = "#3ecfff";
-      ctx.arc(pt[0] * w, pt[1] * h, 4, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  }, [skeleton]);
+  const th = useMemo(() => {
+    const n = (v, d) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : d);
+    return { medium: n(settings.ai.medium, 0.4), high: n(settings.ai.high, 0.7), fall: n(settings.ai.fall, 0.9) };
+  }, [settings]);
 
-  return <canvas ref={canvasRef} width={640} height={360} className="skel" aria-label="Skeleton monitor" />;
+  const vm = useMemo(() => buildViewModel(raw, th), [raw.state, raw.events, raw.patients, raw.rooms, th]); // eslint-disable-line react-hooks/exhaustive-deps
+  const services = useMemo(() => buildServices({ health: raw.health, online: raw.online, latency: raw.latency, ws: raw.ws, poseAt: raw.poseAt }),
+    [raw.health, raw.online, raw.latency, raw.ws, raw.poseAt, raw.updated]); // eslint-disable-line react-hooks/exhaustive-deps
+  const healthy = services.filter(s => s.tone === 'ok').length;
+
+  const statusOf = useCallback(x => (acks[x.id] ? 'Acknowledged' : x.status), [acks]);
+  const onAck = id => setAcks(a => ({ ...a, [id]: new Date().toISOString() }));
+  const go = (page, extra = {}) => { setView({ page, ...extra }); window.scrollTo(0, 0); };
+  const openPatient = id => go('patients', { patient: id });
+  const openEvent = id => go('events', { event: id });
+
+  const openAlerts = vm.alerts.filter(a => ['Open', 'Investigating'].includes(statusOf(a)));
+  const notifications = openAlerts.slice(0, 6).map(a => ({ id: a.id, tag: a.tag, title: `${a.title} — ${a.patient}`, ago: a.ago, go: 'alerts' }));
+  const { page } = view;
+
+  const pages = {
+    dashboard: <Dashboard vm={vm} online={raw.online} healthy={healthy} total={services.length} go={go} statusOf={statusOf} updatedAt={raw.poseAt ? new Date(raw.poseAt) : null} />,
+    patients: view.patient
+      ? <PatientDetail vm={vm} id={view.patient} back={() => go('patients')} history={raw.history} th={th} statusOf={statusOf} />
+      : <Patients vm={vm} openPatient={openPatient} />,
+    live: <LiveMonitoring vm={vm} th={th} updatedAt={raw.poseAt ? new Date(raw.poseAt) : null} />,
+    alerts: <Alerts vm={vm} statusOf={statusOf} onAck={onAck} openEvent={openEvent} openPatient={openPatient} />,
+    events: view.event
+      ? <EventDetail vm={vm} id={view.event} back={() => go('events')} statusOf={statusOf} acks={acks} />
+      : <Events vm={vm} statusOf={statusOf} openEvent={openEvent} />,
+    rooms: <RoomMonitoring vm={vm} openPatient={openPatient} />,
+    analytics: <Analytics vm={vm} history={raw.history} th={th} />,
+    settings: <Settings vm={vm} settings={settings} setSettings={setSettings} />,
+    status: <SystemStatus services={services} online={raw.online} updatedAt={raw.updated} />,
+  };
+
+  const banner = (
+    <>
+      {!raw.online && raw.updated && (
+        <div className="conn-banner">Cannot reach the backend (GET /health failed). Start it with <code>uvicorn backend.main:app --port 8000</code>; the page reconnects automatically.</div>
+      )}
+      {vm.pose?.fallConfirmed && page !== 'live' && (
+        <div className="banner fall-banner"><Icon name="alert" size={18} />
+          <div><b>Fall detected{vm.pose.patient ? ` — ${vm.pose.patient}` : ''}{vm.pose.room ? ` · ${vm.pose.room}` : ''}</b><span>The model reports a confirmed fall right now.</span></div>
+          <button className="btn white" onClick={() => go('live')}>Open live view</button></div>
+      )}
+    </>
+  );
+
+  return (
+    // <Layout active={page} onNavigate={go} alertCount={openAlerts.length} online={raw.online} healthy={healthy} total={services.length} notifications={notifications} banner={banner}>
+    <Layout
+  active={page}
+  onNavigate={go}
+  alertCount={openAlerts.length}
+  online={raw.online}
+  healthy={healthy}
+  total={services.length}
+  notifications={notifications}
+  banner={banner}
+  staff={staff}
+>
+      {pages[page]}
+    </Layout>
+  );
 }
 
 export default function App() {
-  const [health, setHealth] = useState(null);
-  const [state, setState] = useState(null);
-  const [events, setEvents] = useState([]);
-  const [patients, setPatients] = useState([]);
-  const [rooms, setRooms] = useState([]);
-  const [error, setError] = useState("");
+  const [staff, setStaff] = useState(null);
+  const [accessToken, setAccessToken] = useState(null);
+  const [showSignup, setShowSignup] = useState(false);
 
-  async function refresh() {
-    try {
-      const [h, r, e, p, rm] = await Promise.all([
-        fetch(`${API}/health`).then((x) => x.json()),
-        fetch(`${API}/monitor/state`).then((x) => x.json()),
-        fetch(`${API}/events/latest?n=12`).then((x) => x.json()),
-        fetch(`${API}/patients`).then((x) => x.json()),
-        fetch(`${API}/rooms`).then((x) => x.json()),
-      ]);
-      setHealth(h);
-      setState(r);
-      setEvents(e.events || []);
-      setPatients(p.patients || []);
-      setRooms(rm.rooms || []);
-      setError("");
-    } catch (err) {
-      setError(`Cannot reach API at ${API}. Start: py -3.12 -m uvicorn backend.main:app --host 127.0.0.1 --port 8001`);
+  const handleLogin = (staffData, token) => {
+    setStaff(staffData);
+    setAccessToken(token);
+    setShowSignup(false);
+  };
+
+  const handleLogout = () => {
+    setStaff(null);
+    setAccessToken(null);
+  };
+
+  if (!staff) {
+    if (showSignup) {
+      return (
+        <Signup
+          onSignup={() => setShowSignup(false)}
+          onBackToLogin={() => setShowSignup(false)}
+        />
+      );
     }
+
+    return (
+      <Login
+        onLogin={handleLogin}
+        onSignup={() => setShowSignup(true)}
+      />
+    );
   }
 
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 1200);
-    return () => clearInterval(id);
-  }, []);
-
-  const riskBody = state?.risk;
-  const patient = patients[0] || { id: "Patient 01", room_id: "ICU-101", status: "MONITORING" };
-
-  const liveNote = useMemo(() => {
-    if (!health) return "Connecting…";
-    return health.lstm_available
-      ? "LSTM baseline loaded (domain-shifted on live YOLO)."
-      : "Pose/risk heuristics only — LSTM weights not loaded.";
-  }, [health]);
-
-  return (
-    <div className="page">
-      <header>
-        <div>
-          <h1>PatientSafetyAI</h1>
-          <p className="sub">Privacy-conscious fall-risk monitoring · academic prototype</p>
-        </div>
-        <button type="button" onClick={refresh}>
-          Refresh
-        </button>
-      </header>
-
-      {error ? <div className="banner">{error}</div> : null}
-
-      <section className="grid">
-        <article className="card">
-          <h2>Patient</h2>
-          <p>
-            <strong>{state?.patient_id || patient.id}</strong>
-          </p>
-          <p>Room: {state?.room_id || patient.room_id}</p>
-          <p>Status: {patient.status || "MONITORING"}</p>
-          <p>Zone: {state?.zone || "—"}</p>
-          <p className="muted">{liveNote}</p>
-        </article>
-
-        <article className="card">
-          <h2>Risk</h2>
-          <p className="score">{riskBody ? Number(riskBody.risk_score).toFixed(2) : "—"}</p>
-          <span className={levelClass(riskBody?.risk_level)}>{riskBody?.risk_level || "NO DATA"}</span>
-          <p>Prediction: {riskBody?.prediction_label || "—"}</p>
-          <p className="muted">LSTM p(fall): {riskBody?.lstm_fall_probability ?? "n/a"}</p>
-        </article>
-
-        <article className="card">
-          <h2>System</h2>
-          <p>API: {health?.status || "down"}</p>
-          <p>YOLO: {health?.yolo_model || "—"}</p>
-          <p>LSTM: {health?.lstm_available ? "available" : "unavailable"}</p>
-          <p className="muted">Not a medical device. Dashboard draws keypoints, not stored video.</p>
-        </article>
-      </section>
-
-      <section className="card">
-        <h2>Live monitor</h2>
-        <p className="muted">
-          COCO-17 skeleton from /predict/frame. Publish with{" "}
-          <code>python demo.py --source … --publish-api http://127.0.0.1:8000</code>
-        </p>
-        <div className="monitor-box">
-          <SkeletonView skeleton={state?.skeleton} />
-          <div className="monitor-meta">
-            {riskBody ? (
-              <>
-                <div className={levelClass(riskBody.risk_level)}>{riskBody.prediction_label}</div>
-                <p>Confirmed fall: {String(riskBody.fall_confirmed)}</p>
-                <p>Consecutive high frames: {riskBody.consecutive_high}</p>
-                <p>Frame: {state?.frame_number ?? "—"}</p>
-              </>
-            ) : (
-              <p>Waiting for pose traffic…</p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className="card">
-        <h2>Recent events</h2>
-        {events.length === 0 ? (
-          <p className="muted">No alerts yet. Fall alerts require temporal confirmation.</p>
-        ) : (
-          <ul className="events">
-            {events
-              .slice()
-              .reverse()
-              .map((ev, i) => (
-                <li key={`${ev.timestamp}-${i}`}>
-                  <span className="time">{ev.timestamp?.slice(11, 19) || "--"}</span>
-                  <span>{ev.event_type}</span>
-                  <span className="muted">
-                    score {ev.risk_score} · {ev.zone}
-                  </span>
-                </li>
-              ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="card">
-        <h2>Rooms</h2>
-        <ul>
-          {rooms.map((room) => (
-            <li key={room.id}>
-              {room.id} {room.name ? `· ${room.name}` : ""}
-            </li>
-          ))}
-        </ul>
-      </section>
-    </div>
-  );
+  return <DashboardApp staff={staff} />;
 }
