@@ -32,6 +32,8 @@ temporal:
 
 model:
   # Existing UP-Fall LSTM baseline (binary NORMAL/FALL)
+  # path: models/upfall_lstm_v2_best.keras
+  # input_shape: [20, 99]
   path: models/upfall_lstm_best.keras
   input_shape: [20, 99]
   # Class semantics observed in cleaned UP-Fall CSVs (A1–A5 fall recordings):

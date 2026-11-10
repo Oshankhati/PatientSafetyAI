@@ -22,6 +22,16 @@ class LstmPredictor:
 
     Therefore ``fall_probability = 1 - P(class=1)`` when ``fall_class == 0``.
     """
+    
+#     """Binary LSTM wrapper. Output is P(class=1) from a sigmoid head.
+
+# In the UP-Fall impact labels:
+#     class 0 = no impact
+#     class 1 = impact detected
+
+# Therefore, when fall_class == 1:
+#     fall_probability = P(class=1)
+# """
 
     def __init__(
         self,
