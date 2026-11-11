@@ -2,7 +2,8 @@ from pathlib import Path
 import pandas as pd
 import re
 
-DATASET_PATH = Path(r"D:\PatientSafetyAI\datasets\UP-Fall")
+# DATASET_PATH = Path(r"D:\PatientSafetyAI\datasets\UP-Fall")
+DATASET_PATH = Path("Datasets/processed/UP-Fall")
 
 print("=" * 70)
 print("UP-FALL LABEL AND ACTIVITY INSPECTION")

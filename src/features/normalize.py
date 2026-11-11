@@ -29,7 +29,8 @@ class TrainStatNormalizer:
         std_path: str | Path | None = None,
     ) -> TrainStatNormalizer:
         root = project_root()
-        split = root / "processed" / "sequences" / "split"
+        # split = root / "Datasets" / "processed" / "sequences" / "split_subjectwise_v2"
+        split = root / "Datasets" / "processed" / "sequences" / "split"
         mean_file = resolve_path(mean_path) if mean_path else split / "normalization_mean.npy"
         std_file = resolve_path(std_path) if std_path else split / "normalization_std.npy"
         if not mean_file.exists() or not std_file.exists():

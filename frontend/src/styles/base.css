@@ -1,0 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --nav: #102f36; --nav-2: #1b4249; --nav-active: #1d5159; --teal: #168d8a; --teal-d: #0f7a78; --teal-l: #e4f3f1;
+  --ink: #12343a; --text: #2c4a50; --muted: #7b9298; --line: #e0e8ea; --bg: #f0f4f6; --panel: #fff;
+  --red: #b71c24; --red-bg: #fde8ea; --amber: #a86a12; --amber-bg: #fcf0cf; --green: #1f7a52; --green-bg: #dff3e8; --grey-bg: #e9eef0;
+  font-family: 'DM Sans', Arial, sans-serif; color: var(--ink); background: var(--bg);
+  text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: var(--bg); font-size: 14px; line-height: 1.35; }
+h1, h2, h3, p { margin: 0; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+dl, dd, ul { margin: 0; padding: 0; }
+li { list-style: none; }
+table { border-collapse: collapse; width: 100%; }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }

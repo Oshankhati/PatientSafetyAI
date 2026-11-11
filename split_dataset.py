@@ -6,7 +6,10 @@ print("=" * 70)
 print("UP-FALL SUBJECT-WISE DATASET SPLIT")
 print("=" * 70)
 
-BASE_DIR = Path(r"D:\PatientSafetyAI\processed\sequences")
+# BASE_DIR = Path(r"D:\PatientSafetyAI\processed\sequences")
+BASE_DIR = Path(
+    r"C:\Projects\PatientSafetyAI\datasets\processed\sequences"
+)
 
 X_PATH = BASE_DIR / "X_sequences.npy"
 Y_PATH = BASE_DIR / "y_sequences.npy"

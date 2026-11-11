@@ -1,26 +1,17 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+// Change TARGET if your FastAPI backend runs on another port.
+const TARGET = 'http://127.0.0.1:8000';
+const http = ['/health', '/monitor', '/risk', '/events', '/patients', '/rooms'];
 
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: "0.0.0.0",
     port: 5175,
-    strictPort: true,
     proxy: {
-      "/health": "http://127.0.0.1:8001",
-      "/risk": "http://127.0.0.1:8001",
-      "/monitor": "http://127.0.0.1:8001",
-      "/events": "http://127.0.0.1:8001",
-      "/patients": "http://127.0.0.1:8001",
-      "/rooms": "http://127.0.0.1:8001",
-      "/predict": "http://127.0.0.1:8001",
-      "/ws": { target: "ws://127.0.0.1:8001", ws: true },
+      ...Object.fromEntries(http.map(r => [r, TARGET])),
+      '/ws': { target: TARGET, ws: true },   // WebSocket /ws/monitor (live updates)
     },
-  },
-  preview: {
-    host: "0.0.0.0",
-    port: 4173,
-    strictPort: false,
   },
 });

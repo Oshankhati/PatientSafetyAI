@@ -8,28 +8,59 @@ print("=" * 70)
 print("UP-FALL LSTM FALL DETECTION TRAINING")
 print("=" * 70)
 
+# # ============================================================
+# # 1. PATHS
+# # ============================================================
+
+# _HERE = Path(__file__).resolve().parent
+# _LEGACY = Path(r"D:\PatientSafetyAI")
+# _SPLIT = Path("processed") / "sequences" / "split" / "X_train_normalized.npy"
+# if (_HERE / _SPLIT).exists():
+#     BASE_DIR = _HERE
+# elif (_LEGACY / _SPLIT).exists():
+#     BASE_DIR = _LEGACY
+# else:
+#     BASE_DIR = _HERE
+# DATA_DIR = BASE_DIR / "processed" / "sequences" / "split"
+
+# X_TRAIN_PATH = DATA_DIR / "X_train_normalized.npy"
+# X_TEST_PATH = DATA_DIR / "X_test_normalized.npy"
+# Y_TRAIN_PATH = DATA_DIR / "y_train.npy"
+# Y_TEST_PATH = DATA_DIR / "y_test.npy"
+
+# MODEL_DIR = BASE_DIR / "models"
+# MODEL_DIR.mkdir(exist_ok=True)
+
+
+
 # ============================================================
 # 1. PATHS
 # ============================================================
 
 _HERE = Path(__file__).resolve().parent
-_LEGACY = Path(r"D:\PatientSafetyAI")
-_SPLIT = Path("processed") / "sequences" / "split" / "X_train_normalized.npy"
-if (_HERE / _SPLIT).exists():
-    BASE_DIR = _HERE
-elif (_LEGACY / _SPLIT).exists():
-    BASE_DIR = _LEGACY
-else:
-    BASE_DIR = _HERE
-DATA_DIR = BASE_DIR / "processed" / "sequences" / "split"
+
+DATA_DIR = (
+    _HERE
+    / "datasets"
+    / "processed"
+    / "sequences"
+    / "split"
+)
+
+MODEL_DIR = _HERE / "models"
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 X_TRAIN_PATH = DATA_DIR / "X_train_normalized.npy"
 X_TEST_PATH = DATA_DIR / "X_test_normalized.npy"
 Y_TRAIN_PATH = DATA_DIR / "y_train.npy"
 Y_TEST_PATH = DATA_DIR / "y_test.npy"
 
-MODEL_DIR = BASE_DIR / "models"
-MODEL_DIR.mkdir(exist_ok=True)
+print("Data directory:", DATA_DIR)
+print("Model directory:", MODEL_DIR)
+
+for path in [X_TRAIN_PATH, X_TEST_PATH, Y_TRAIN_PATH, Y_TEST_PATH]:
+    if not path.exists():
+        raise FileNotFoundError(f"Required data file not found: {path}")
 
 # ============================================================
 # 2. LOAD DATA
