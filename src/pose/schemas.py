@@ -128,6 +128,8 @@ class FramePoseResult:
     timestamp: float
     persons: list[PersonPose] = field(default_factory=list)
     fps_hint: float | None = None
+    inference_latency_ms: float | None = None
+    tracking_mode: str | None = None
 
     @property
     def person_count(self) -> int:
@@ -170,4 +172,6 @@ class FramePoseResult:
             "person_count": self.person_count,
             "persons": [p.to_dict() for p in self.persons],
             "fps_hint": self.fps_hint,
+            "inference_latency_ms": self.inference_latency_ms,
+            "tracking_mode": self.tracking_mode,
         }

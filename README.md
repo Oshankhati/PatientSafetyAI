@@ -27,35 +27,29 @@ over pipelines that archive identifiable raw video by default.
 ```mermaid
 flowchart TD
     A[Camera / Video] --> B[YOLO Pose]
-    B --> C[Person + COCO-17 Keypoints]
-    C --> D[Person tracking / selection]
-    D --> E[Feature extraction]
-    E --> F[20-frame rolling buffer]
-    F --> G[Temporal model LSTM / GRU]
-    G --> H[Fall probability]
-    H --> I[Risk engine + temporal confirmation]
-    I --> J[Events / alerts]
-    J --> K[FastAPI]
-    K --> L[React dashboard]
+    B --> C[All detected people + COCO-17 keypoints]
+    C --> D[Track each person]
+    D --> E[Per-person features and 20-frame buffer]
+    E --> F[Temporal model LSTM / GRU]
+    F --> G[Per-person fall probability and risk state]
+    G --> H[Events / alerts]
+    H --> I[FastAPI]
+    I --> J[React dashboard]
 ```
 
 ## Current progress
 
-| Stage | Status |
-| --- | --- |
-| UP-Fall dataset collected & inspected | Done |
-| Label cleaning / skeleton analysis | Done |
-| 20-frame sequences + subject-wise split | Done |
-| Training-set normalization | Done |
-| Baseline LSTM trained & evaluated | Done (baseline only) |
-| YOLO Pose from raw video / webcam | Done |
-| Skeleton visualization | Done |
-| YOLO → UP-Fall feature bridge | Done (explicit **approximate** mapping; Z=0) |
-| 20-frame rolling buffer + LSTM inference | Done |
-| Risk engine / temporal confirmation | Done (prototype formula) |
-| FastAPI event APIs | Done |
-| React dashboard | Done (polls keypoints + risk; draws skeleton, not raw video) |
-| LSTM operating-point sweep | Done (`scripts/tune_decision_threshold.py`) |
+- UP-Fall sequences use a subject-wise train / validation / test split.
+- The monitor processes up to the configured maximum number of people, with
+  separate sequence, risk, and event state per tracking ID.
+- YOLO tracking uses ByteTrack when available and an IoU fallback otherwise.
+- FastAPI and the React dashboard expose per-person status and inference
+  telemetry; the dashboard draws keypoints, not raw video.
+- A controlled 99-feature baseline vs. 34-feature COCO-17 XY experiment was
+  evaluated on SUBJECT5 after selecting thresholds on SUBJECT4.
+- The live configuration remains on the existing 99-feature model. The XY
+  candidate trades lower fall recall for fewer false alarms and is not yet a
+  default deployment choice.
 
 ## Repository layout
 
@@ -102,7 +96,8 @@ skeleton/keypoint CSVs.
 - 33 joints × `(X, Y, Z)` = **99 features per frame**
 - Sequences: **20 frames**, step size 5 during preparation
 - Subject-wise split:
-  - Train: SUBJECT1–4 → 1122 sequences
+  - Train: SUBJECT1–3 → 1037 sequences
+  - Validation: SUBJECT4 → 85 sequences
   - Test: SUBJECT5 → 272 sequences
 - Labels (binary, within A1–A5 fall recordings):
   - `0` ≈ fall-phase frames (minority)
@@ -111,23 +106,41 @@ skeleton/keypoint CSVs.
 Normalization uses **training statistics only** (`normalization_mean.npy`,
 `normalization_std.npy`). Never recompute stats on the test set.
 
-## Baseline LSTM (kept for comparison)
+## Fall-model evaluation (kept for comparison)
 
 Files (local; may be gitignored):
 
 - `models/upfall_lstm_best.keras`
 - `models/upfall_lstm_final.keras`
 
-Approximate subject-wise test metrics (baseline):
+The previously evaluated model at the default 0.5 threshold scored on SUBJECT5:
 
-| Metric | Value |
-| --- | --- |
-| Accuracy | 62.87% |
-| Precision | 88.11% |
-| Recall | 67.36% |
-| F1 | 76.35% |
+- Accuracy: **57.35%**
+- Fall precision: **8.65%**
+- Fall recall: **30.00%**
+- Fall F1: **13.43%**
+- Confusion matrix (rows actual fall / non-fall; columns predicted fall / non-fall):
+  `[[9, 21], [95, 147]]`
 
-Class 0 detection is weak under imbalance. This model is **not** production-ready.
+The controlled retraining experiment uses SUBJECT1–3 for training,
+SUBJECT4 for checkpoint / threshold selection, and SUBJECT5 once for final
+evaluation (30 fall and 242 non-fall windows). Thresholds were selected on
+validation data only. However, earlier project work evaluated the prior
+baseline and swept thresholds on SUBJECT5. It is not a pristine project-wide
+holdout; treat this comparison as exploratory. Class 0 is the fall class:
+
+- **99-feature baseline** (threshold 0.56; 44,097 parameters): accuracy
+  **51.47%**, fall precision **12.50%**, fall recall **56.67%**, fall F1
+  **20.48%**, false-positive rate **49.17%**.
+- **COCO-17 XY candidate** (threshold 0.51; 27,457 parameters): accuracy
+  **70.22%**, fall precision **15.07%**, fall recall **36.67%**, fall F1
+  **21.36%**, false-positive rate **25.62%**.
+
+The candidate improves accuracy, fall precision, fall F1, and false-alarm rate,
+but misses more falls than the retrained baseline. The dataset is small and
+subject-specific; neither result establishes clinical reliability. Full
+metrics, classification reports, confusion matrices, and the comparison CSV
+are in `results/fall_experiment_20261115T134158Z/`.
 
 ### Critical feature-format warning
 
@@ -141,6 +154,11 @@ mapping in `src/features/yolo_to_upfall.py` (derived Kinect-style 33 joints,
 **Z = 0**, unused joints copied or zeroed). Training-set mean/std are then
 applied. Live LSTM scores are **domain-shifted** and must not be compared
 directly to the SUBJECT5 Kinect test metrics.
+
+The COCO-17 XY candidate removes synthetic depth channels and repeated joint
+features, but its UP-Fall-to-COCO joint projection is still approximate. It
+does not establish performance on live camera data or eliminate sensor and
+coordinate-domain shift.
 
 ## Risk score (prototype)
 
@@ -164,13 +182,10 @@ PRE-FALL / MEDIUM is a **heuristic state**, not a trained third class.
 
 ```text
 Video / webcam / image
-    → YOLO11n-Pose (CPU)
-    → person select / track
-    → COCO-17 keypoints
-    → approximate 99-dim vector + train-stat z-score
-    → 20-frame buffer (stride 5)
-    → LSTM P(fall)  +  pose signals
-    → risk engine + confirmation
+    → YOLO11n-Pose (CPU) + multi-person tracking
+    → per-person COCO-17 keypoints and 20-frame buffer (stride 5)
+    → LSTM P(fall) + pose signals + independent risk state
+    → per-person events and dashboard cards
     → events (in memory)
 ```
 
@@ -181,6 +196,8 @@ pip install -r requirements.txt
 ```
 
 Weights: `models/yolo11n-pose.pt` and `models/upfall_lstm_best.keras`.
+For Windows PowerShell setup and the complete three-terminal run sequence,
+see [`run_commands.txt`](run_commands.txt).
 
 ### Demo
 
@@ -195,16 +212,19 @@ python demo.py --source 0
 
 ### API + dashboard
 
-```bash
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
-cd frontend && npm install && npm run dev
-# optional: push live keypoints (not raw video) into the dashboard
-python demo.py --source datasets/samples/bus_clip.mp4 --publish-api http://127.0.0.1:8000
-```
+Start the backend, frontend, and optional webcam/video publisher in separate
+terminals using [`run_commands.txt`](run_commands.txt). The backend requires
+`PATIENTSAFETYAI_SECRET_KEY` to be set before startup.
 
-Endpoints: `GET /health`, `POST /predict/frame`, `POST /predict/video`,
+Endpoints: `POST /auth/signup`, `POST /auth/login`, `GET /auth/me`,
+`GET /health`, `POST /predict/frame`, `POST /predict/video`,
 `GET /risk`, `GET /monitor/state`, `GET /events`, `GET /events/latest`,
-`GET /patients`, `GET /rooms`, `POST /rooms`, `WS /ws/monitor`.
+`GET /events/acknowledgements`, `POST /events/{event_id}/acknowledge`,
+`GET /patients`, `GET /rooms`, `POST /rooms`, `GET/PUT /settings`,
+`POST /camera/start`, `POST /camera/stop`, `GET /camera/status`, and
+`WS /ws/monitor`. Dashboard, settings, event, room, and camera-control routes
+require a bearer token from login; `/health`, auth routes, and the pose-frame
+ingest route remain available for startup, account access, and the local demo.
 
 ### Tests
 
@@ -212,11 +232,16 @@ Endpoints: `GET /health`, `POST /predict/frame`, `POST /predict/video`,
 python -m pytest tests -q -k "not slow"
 ```
 
-Versioned LSTM evaluation (does not overwrite previous folders):
+The API tests set a local-only signing key in their test fixture. For Windows
+setup, use the matching command in `run_commands.txt`.
+
+Versioned LSTM evaluation and validation-only threshold selection:
 
 ```bash
 python scripts/evaluate_baseline.py
-python scripts/tune_decision_threshold.py   # SUBJECT5 threshold sweep; keeps baseline 0.5
+python scripts/tune_decision_threshold.py   # SUBJECT4 validation only
+python scripts/train_fall_experiment.py
+python scripts/evaluate_fall_experiment.py --experiment results/fall_experiment_<timestamp>
 ```
 
 ## Privacy architecture
@@ -238,7 +263,9 @@ and weights, zone rectangles, model path, API host/port.
 ## Evaluation protocol
 
 - Subject-wise holdout (SUBJECT5 never in training)
+- Checkpoint and threshold selection use SUBJECT4 only
 - Preprocessing statistics from **train only**
+- Final experiment test metrics evaluated once on SUBJECT5
 - Report accuracy, precision, recall, F1, confusion matrix, class counts, FPR/FNR
 
 ## Limitations

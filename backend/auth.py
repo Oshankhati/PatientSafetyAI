@@ -4,7 +4,8 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from pwdlib import PasswordHash
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
 
 from backend.database import (
@@ -26,6 +27,7 @@ if not SECRET_KEY:
 
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = 60
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class SignupRequest(BaseModel):
@@ -45,12 +47,38 @@ def create_access_token(staff_id: str):
     expires = datetime.now(timezone.utc) + timedelta(
         minutes=TOKEN_EXPIRE_MINUTES
     )
-
     return jwt.encode(
         {"sub": staff_id, "exp": expires},
         SECRET_KEY,
         algorithm=ALGORITHM,
     )
+
+
+def get_staff_from_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        staff_id = payload.get("sub")
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired access token.") from exc
+
+    staff = get_staff_by_staff_id(staff_id) if staff_id else None
+    if staff is None:
+        raise HTTPException(status_code=401, detail="Staff account not found.")
+    return {
+        "full_name": staff["full_name"],
+        "staff_id": staff["staff_id"],
+        "email": staff["email"],
+        "role": staff["role"],
+        "department": staff["department"],
+    }
+
+
+def require_staff(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> dict:
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    return get_staff_from_token(credentials.credentials)
 
 
 @router.post("/signup")
@@ -108,3 +136,8 @@ def login(data: LoginRequest):
             "department": staff["department"],
         },
     }
+
+
+@router.get("/me")
+def current_staff(staff: dict = Depends(require_staff)):
+    return {"staff": staff}

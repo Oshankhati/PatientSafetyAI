@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
+from typing import Any
 
 from src.pose.schemas import (
     COCO_KEYPOINT_NAMES,
@@ -30,21 +31,38 @@ class SkeletonVisualizer:
         self.bone_color = bone_color
         self.text_color = text_color
 
-    def draw_person(self, frame: np.ndarray, person: PersonPose) -> np.ndarray:
+    def draw_person(
+        self,
+        frame: np.ndarray,
+        person: PersonPose,
+        status: dict[str, Any] | None = None,
+    ) -> np.ndarray:
         """Draw one person's box + skeleton in-place and return the frame."""
         x1, y1, x2, y2 = map(int, person.bounding_box.as_xyxy)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), self.box_color, 2)
-
-        label = (
-            f"ID {person.person_id} "
-            f"{person.detection_confidence:.2f}"
+        risk = status.get("risk", {}) if status else {}
+        level = str(risk.get("risk_level", "")).upper()
+        color = (
+            (30, 35, 220) if "FALL" in level
+            else (20, 145, 225) if "HIGH" in level
+            else (0, 175, 205) if "MEDIUM" in level
+            else self.box_color
         )
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+
+        risk_score = risk.get("risk_score")
+        risk_label = (
+            f" | Risk {float(risk_score) * 100:.0f}%"
+            if isinstance(risk_score, (int, float))
+            else ""
+        )
+        state = risk.get("prediction_label", "TRACKED")
+        label = f"P{person.person_id} {state}{risk_label}"
         cv2.putText(
             frame,
             label,
             (x1, max(20, y1 - 8)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
+            0.5,
             self.text_color,
             2,
             cv2.LINE_AA,
@@ -82,11 +100,17 @@ class SkeletonVisualizer:
         frame: np.ndarray,
         pose_result: FramePoseResult,
         overlay_text: list[str] | None = None,
+        person_status: list[dict[str, Any]] | None = None,
     ) -> np.ndarray:
         """Draw all persons and optional HUD text. Does not copy unless needed."""
         out = frame
+        status_by_id = {
+            int(item["person_id"]): item
+            for item in (person_status or [])
+            if "person_id" in item
+        }
         for person in pose_result.persons:
-            self.draw_person(out, person)
+            self.draw_person(out, person, status_by_id.get(person.person_id))
 
         lines = overlay_text or []
         y = 28

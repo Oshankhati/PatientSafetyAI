@@ -97,6 +97,15 @@
 .warn-banner { background: #fdf0ea; border: 1px solid #f0c9b6; color: #9a4a22; }
 .banner b, .banner span { display: block; } .banner b { font-size: 12px; } .banner span { font-size: 11px; margin-top: 3px; opacity: .85; }
 .live-grid { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); gap: 18px; margin-bottom: 18px; }
+.person-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 16px; margin-top: 16px; align-items: start; }
+.person-card { margin-bottom: 0; padding: 14px; }
+.person-card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+.person-card-head .eyebrow { overflow-wrap: anywhere; }
+.person-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; padding-top: 12px; }
+.person-meta > div { min-width: 0; }
+.person-meta small, .person-meta b { display: block; }
+.person-meta small { color: var(--muted); font-size: 10px; margin-bottom: 3px; }
+.person-meta b { font-size: 11px; overflow-wrap: anywhere; }
 
 /* ---------- alerts ---------- */
 .alert-card { display: flex; align-items: center; gap: 14px; border-radius: 12px; padding: 16px 20px; margin-bottom: 14px; }

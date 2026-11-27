@@ -1,9 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon';
 import PoseCanvas from '../components/PoseCanvas';
 import { Panel, PageHeading } from '../components/ui';
-
-const ROLES = ['Admin', 'Nurse', 'Viewer'];
 
 // rooms[].zones from the backend: {name: [x1, y1, x2, y2]} (0-1 of the frame; pixel values are scaled by 1280x720)
 function toZones(zones) {
@@ -23,12 +21,12 @@ function Num({ label, hint, value, onChange, disabled, placeholder }) {
   );
 }
 
-export default function Settings({ vm, settings, setSettings }) {
-  const [role, setRole] = useState('Admin');
+export default function Settings({ vm, settings, onSave, error }) {
   const [roomId, setRoomId] = useState('');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(settings);
-  const editable = role === 'Admin';
+  useEffect(() => setDraft(settings), [settings]);
   const { ai, camera: cam } = draft;
   const setAi = k => v => { setSaved(false); setDraft(d => ({ ...d, ai: { ...d.ai, [k]: v } })); };
   const setCam = k => v => { setSaved(false); setDraft(d => ({ ...d, camera: { ...d.camera, [k]: v } })); };
@@ -40,20 +38,18 @@ export default function Settings({ vm, settings, setSettings }) {
 
   return (
     <>
-      <PageHeading title="Settings" sub="AI thresholds, cameras and monitored zones"
-        right={<div className="role-toggle"><span>Preview role</span>
-          <button className="btn primary" onClick={() => setRole(ROLES[(ROLES.indexOf(role) + 1) % ROLES.length])}>{role}</button></div>} />
+      <PageHeading title="Settings" sub="AI thresholds, cameras and monitored zones" />
       <div className="settings-grid">
         <div className="stack">
           <Panel title="AI settings" sub="Model and risk engine configuration">
             <div className="form-grid">
-              <Num label="YOLO confidence" hint="Configured as 0–1" value={ai.yolo} onChange={setAi('yolo')} disabled={!editable} />
-              <Num label="Medium threshold" hint="Configured as 0–1" value={ai.medium} onChange={setAi('medium')} disabled={!editable} />
-              <Num label="High-risk threshold" hint="Configured as 0–1" value={ai.high} onChange={setAi('high')} disabled={!editable} />
-              <Num label="Fall threshold" hint="Configured as 0–1" value={ai.fall} onChange={setAi('fall')} disabled={!editable} />
-              <Num label="Sequence length" hint="Frames" value={ai.seqLen} onChange={setAi('seqLen')} disabled={!editable} />
-              <Num label="Sequence stride" hint="Frames" value={ai.stride} onChange={setAi('stride')} disabled={!editable} />
-              <Num label="Minimum consecutive frames" hint="Frames" value={ai.minFrames} onChange={setAi('minFrames')} disabled={!editable} />
+              <Num label="YOLO confidence" hint="Configured as 0–1" value={ai.yolo} onChange={setAi('yolo')} />
+              <Num label="Medium threshold" hint="Configured as 0–1" value={ai.medium} onChange={setAi('medium')} />
+              <Num label="High-risk threshold" hint="Configured as 0–1" value={ai.high} onChange={setAi('high')} />
+              <Num label="Fall threshold" hint="Configured as 0–1" value={ai.fall} onChange={setAi('fall')} />
+              <Num label="Sequence length" hint="Frames" value={ai.seqLen} onChange={setAi('seqLen')} />
+              <Num label="Sequence stride" hint="Frames" value={ai.stride} onChange={setAi('stride')} />
+              <Num label="Minimum consecutive frames" hint="Frames" value={ai.minFrames} onChange={setAi('minFrames')} />
             </div>
             <div className={`validity ${valid ? 'ok' : 'bad'}`}>
               <Icon name={valid ? 'check' : 'alert'} size={16} />
@@ -62,12 +58,12 @@ export default function Settings({ vm, settings, setSettings }) {
           </Panel>
           <Panel title="Camera settings" sub="Primary source configuration">
             <div className="form-grid">
-              <label className="num"><span>Source</span><select disabled={!editable} value={cam.source} onChange={e => setCam('source')(e.target.value)}>
+              <label className="num"><span>Source</span><select value={cam.source} onChange={e => setCam('source')(e.target.value)}>
                 <option>RTSP stream</option><option>USB webcam</option><option>Video file</option></select></label>
-              <Num label="Camera ID" placeholder="CAM-01" value={cam.cameraId} onChange={setCam('cameraId')} disabled={!editable} />
-              <label className="num"><span>Resolution</span><select disabled={!editable} value={cam.resolution} onChange={e => setCam('resolution')(e.target.value)}>
+              <Num label="Camera ID" placeholder="CAM-01" value={cam.cameraId} onChange={setCam('cameraId')} />
+              <label className="num"><span>Resolution</span><select value={cam.resolution} onChange={e => setCam('resolution')(e.target.value)}>
                 <option>1920 × 1080</option><option>1280 × 720</option><option>640 × 480</option></select></label>
-              <Num label="FPS" placeholder="24" value={cam.fps} onChange={setCam('fps')} disabled={!editable} />
+              <Num label="FPS" placeholder="24" value={cam.fps} onChange={setCam('fps')} />
             </div>
           </Panel>
         </div>
@@ -81,9 +77,14 @@ export default function Settings({ vm, settings, setSettings }) {
               emptyText={room ? 'No live pose for this room' : 'No rooms configured'} /></div>
             <div className="zone-legend"><span><i className="bed" />Bed zone</span><span><i className="safe" />Safe zone</span><span><i className="floor" />Floor zone</span></div>
             {room && !zones.length && <p className="muted tiny">This room has no zones in the backend (GET /rooms → zones).</p>}
-            <button className="btn primary" disabled={!editable || !valid} onClick={() => { setSettings(draft); setSaved(true); }}>Save configuration</button>
-            {saved && <div className="validity ok"><Icon name="check" size={16} />Configuration saved in this browser</div>}
-            <p className="muted tiny">The backend has no settings endpoint yet, so these values are stored in this browser and drive the risk-level colours shown here.</p>
+            <button className="btn primary" disabled={saving || !valid} onClick={async () => {
+              setSaving(true);
+              setSaved(await onSave(draft));
+              setSaving(false);
+            }}>{saving ? 'Saving…' : 'Save configuration'}</button>
+            {saved && <div className="validity ok"><Icon name="check" size={16} />Configuration saved to the backend</div>}
+            {error && <div className="validity bad" role="alert">{error}</div>}
+            <p className="muted tiny">Settings are saved by the backend. Risk thresholds also update the dashboard’s displayed risk bands; model and camera runtime settings require a restart or direct pipeline configuration.</p>
           </Panel>
         </div>
       </div>

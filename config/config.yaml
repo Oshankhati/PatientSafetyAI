@@ -21,6 +21,12 @@ pose:
   # Persist person IDs across frames when Ultralytics tracking is available
   enable_tracking: true
   tracker: bytetrack.yaml
+  max_det: 10
+
+tracking:
+  # Retain absent tracks this many frames; IoU fallback uses the same expiry.
+  max_missing_frames: 30
+  max_people: 10
 
 temporal:
   sequence_length: 20
@@ -36,6 +42,10 @@ model:
   # input_shape: [20, 99]
   path: models/upfall_lstm_best.keras
   input_shape: [20, 99]
+  feature_dim: 99
+  representation: upfall33_xyz
+  normalization_mean: processed/sequences/split/normalization_mean.npy
+  normalization_std: processed/sequences/split/normalization_std.npy
   # Class semantics observed in cleaned UP-Fall CSVs (A1–A5 fall recordings):
   # label 0 ≈ fall phase frames (minority); label 1 ≈ non-fall frames within recording.
   class_names:
@@ -52,6 +62,8 @@ risk:
   high_max: 0.89
   fall_min: 0.90
   min_consecutive_frames: 5
+  recovery_frames: 10
+  recovery_threshold: 0.39
   fall_threshold: 0.90
   high_risk_threshold: 0.70
 

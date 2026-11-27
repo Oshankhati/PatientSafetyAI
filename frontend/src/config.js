@@ -1,5 +1,5 @@
 // Backend connection settings. Everything on screen comes from the FastAPI backend (no sample data).
-export const API_BASE = import.meta.env.VITE_API_URL || '';
+export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 export const POLL_MS = 2000;
 // WebSocket of the backend: @app.websocket("/ws/monitor"). In dev it goes through the Vite proxy ('/ws').
 export const WS_URL = import.meta.env.VITE_WS_URL

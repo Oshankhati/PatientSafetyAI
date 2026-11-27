@@ -30,9 +30,9 @@ export default function EventDetail({ vm, id, back, statusOf, acks }) {
           <Panel><Eyebrow>ACKNOWLEDGEMENT</Eyebrow>
             {ack ? (
               <>
-                <div className="ack-user"><span className="avatar sm">AN</span><span><b>Alex Nurse</b><small>Acknowledged at {timeLabel(new Date(ack))}</small></span></div>
+                <div className="ack-user"><span className="avatar sm">{String(ack.staff_name || ack.staff_id || 'S').slice(0, 2).toUpperCase()}</span><span><b>{ack.staff_name || ack.staff_id || 'Staff member'}</b><small>Acknowledged at {timeLabel(new Date(ack.acknowledged_at || ack))}</small></span></div>
                 {e.outcome && <div className="kv ruled"><span>Outcome</span><b>{e.outcome}</b></div>}
-                <p className="muted tiny">Recorded in this browser only. The backend has no acknowledgement endpoint.</p>
+                <p className="muted tiny">Acknowledgement saved by the backend.</p>
               </>
             ) : status === 'Acknowledged' || status === 'Resolved' ? <p className="muted">{status} by the backend.</p> : <p className="muted">Not yet acknowledged.</p>}
           </Panel>

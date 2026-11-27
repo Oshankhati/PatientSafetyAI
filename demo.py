@@ -56,8 +56,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def _publish(api_base: str, pose, patient_id: str, room_id: str) -> None:
-    if not pose.persons:
-        return
     body = {
         "frame_number": pose.frame_number,
         "timestamp": pose.timestamp,
@@ -92,7 +90,9 @@ def hud_lines(status: dict, fps: float) -> list[str]:
     return [
         "PatientSafetyAI | prototype (not clinical)",
         f"Patient: {status.get('patient_id', '-')}  Room: {status.get('room_id', '-')}",
-        f"Persons: {status.get('person_count', 0)}  FPS: {fps:.1f}",
+        f"Persons: {status.get('tracked_person_count', status.get('person_count', 0))}  FPS: {fps:.1f}",
+        f"YOLO: {status.get('performance', {}).get('yolo_inference_ms', '—')} ms  "
+        f"Pipeline: {status.get('performance', {}).get('pipeline_latency_ms', '—')} ms",
         f"Prediction: {risk.get('prediction_label', '—')}",
         f"Risk: {risk.get('risk_level', '—')}  Score: {risk.get('risk_score', '—')}",
         f"LSTM p(fall): {risk.get('lstm_fall_probability', 'n/a')}  zone={status.get('zone', '-')}",
@@ -136,7 +136,12 @@ def main() -> int:
             status = monitor.process_pose_frame(pose, frame.shape)
             if args.publish_api:
                 _publish(args.publish_api, pose, args.patient, args.room)
-            vis = detector.draw_skeleton(frame, pose, overlay_text=hud_lines(status, 0.0))
+            vis = detector.draw_skeleton(
+                frame,
+                pose,
+                overlay_text=hud_lines(status, 0.0),
+                person_status=status.get("people"),
+            )
             out = ROOT / "results" / "demo_image.jpg"
             out.parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(out), vis)
@@ -173,7 +178,12 @@ def main() -> int:
             if args.publish_api:
                 _publish(args.publish_api, pose, args.patient, args.room)
             fps = n / max(time.perf_counter() - t0, 1e-6)
-            vis = detector.draw_skeleton(frame, pose, overlay_text=hud_lines(status, fps))
+            vis = detector.draw_skeleton(
+                frame,
+                pose,
+                overlay_text=hud_lines(status, fps),
+                person_status=status.get("people"),
+            )
             if kp_file is not None:
                 rec = pose.to_dict()
                 rec["risk"] = status.get("risk")

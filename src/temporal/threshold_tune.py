@@ -5,8 +5,8 @@ Raising the class-1 threshold labels more sequences as class 0 (fall),
 which can raise fall recall at the cost of more false alarms.
 
 This is **not** a new trained class. It only changes the operating point
-on the existing sigmoid head. Statistics are computed on the held-out
-subject (SUBJECT5) after training — never used to fit preprocessing.
+on the existing sigmoid head. Threshold selection must use validation data only. Final held-out test
+metrics are computed by the separate evaluation script after model selection.
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ def metrics_at_threshold(
         "f1_class1": float(f1_score(y, pred, zero_division=0)),
         "f1_macro": float(f1_score(y, pred, average="macro", zero_division=0)),
         "confusion_matrix": cm.tolist(),
-        "test_class_counts": {int(k): int(v) for k, v in zip(unique, counts)},
+        "class_counts": {int(k): int(v) for k, v in zip(unique, counts)},
     }
     out.update(_fall_rates(cm))
     return out
@@ -89,11 +89,11 @@ def select_operating_point(
     max_false_positive_rate: float = 0.50,
     min_fall_recall: float = 0.40,
 ) -> dict[str, Any]:
-    """Pick the row with highest macro-F1 among those meeting safety constraints.
+    """Pick a feasible row by fall F1, or explicitly mark fallback as infeasible.
 
     Preference: keep FPR (class 0 false alarms on non-fall) below the cap
-    while meeting a minimum fall recall. If none qualify, pick highest
-    fall_recall among the sweep (documented fallback).
+    while meeting a minimum fall recall. If none qualify, retain the default
+    0.5 threshold and report that the constraints were not met.
     """
     feasible = [
         r
@@ -101,5 +101,26 @@ def select_operating_point(
         if r["false_positive_rate"] <= max_false_positive_rate
         and r["fall_recall"] >= min_fall_recall
     ]
-    pool = feasible if feasible else rows
-    return max(pool, key=lambda r: (r["f1_macro"], r["fall_recall"]))
+    if not rows:
+        raise ValueError("At least one threshold result is required")
+    if feasible:
+        selected = max(
+            feasible,
+            key=lambda r: (
+                2 * r["fall_precision"] * r["fall_recall"]
+                / max(r["fall_precision"] + r["fall_recall"], 1e-12),
+                r["fall_recall"],
+                r["fall_precision"],
+            ),
+        )
+        return {
+            **selected,
+            "constraints_met": True,
+            "selection_reason": "highest fall F1 among feasible thresholds",
+        }
+    selected = min(rows, key=lambda r: abs(r["threshold"] - 0.5))
+    return {
+        **selected,
+        "constraints_met": False,
+        "selection_reason": "no feasible threshold; retained the default 0.5 threshold",
+    }

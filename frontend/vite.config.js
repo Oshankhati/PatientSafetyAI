@@ -3,7 +3,18 @@ import react from '@vitejs/plugin-react';
 
 // Change TARGET if your FastAPI backend runs on another port.
 const TARGET = 'http://127.0.0.1:8000';
-const http = ['/health', '/monitor', '/risk', '/events', '/patients', '/rooms'];
+const http = [
+  '/health',
+  '/monitor',
+  '/risk',
+  '/events',
+  '/patients',
+  '/rooms',
+  '/settings',
+  '/auth',
+  '/predict',
+  '/camera',
+];
 
 export default defineConfig({
   plugins: [react()],

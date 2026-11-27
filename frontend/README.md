@@ -2,13 +2,12 @@
 
 React 18 + Vite. No sample data: every screen is filled from the FastAPI backend.
 
-    # terminal 1 (backend)
-    uvicorn backend.main:app --port 8000
-    # terminal 2 (this project)
-    npm install
-    npm run dev          # http://localhost:5175
+From `D:\Doing`, follow the setup and three-terminal run commands in
+[`run_commands.txt`](../run_commands.txt).
 
-Vite proxies /health /monitor /risk /events /patients /rooms and the WebSocket /ws/monitor to 127.0.0.1:8000
+Vite proxies the backend API routes (`/health`, `/monitor`, `/risk`, `/events`,
+`/patients`, `/rooms`, `/auth`, `/predict`, and `/camera`) and the WebSocket
+`/ws/monitor` to `127.0.0.1:8000`
 (change TARGET in vite.config.js; or set VITE_API_URL / VITE_WS_URL in a .env file).
 
 ## Where each screen gets its data
@@ -26,4 +25,8 @@ Vite proxies /health /monitor /risk /events /patients /rooms and the WebSocket /
 
 ## Notes
 - Event / risk field names are read tolerantly in src/data/model.js; adjust there if your pipeline uses other names.
-- Verified with a mocked backend (idle, fall, no frames). Not yet run against your real backend.
+- Staff sign-up and login use the same proxied API base as the monitoring views.
+- Monitoring, patient, room, settings, and acknowledgement APIs require the
+  bearer token issued at login; expired sessions return to the sign-in screen.
+- Settings and alert acknowledgements are persisted in the backend SQLite database.
+- Start the backend camera from Live Monitoring, or publish pose frames with `demo.py`; use only one camera input at a time.

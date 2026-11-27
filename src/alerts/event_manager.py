@@ -31,6 +31,9 @@ class EventManager:
         self._events: list[SafetyEvent] = []
         self._last_type: dict[int, str] = {}
 
+    def forget_person(self, person_id: int) -> None:
+        self._last_type.pop(person_id, None)
+
     def emit(self, event: SafetyEvent) -> SafetyEvent:
         self._events.append(event)
         if len(self._events) > self.max_events:
@@ -71,7 +74,7 @@ class EventManager:
 
         if event_type is None:
             return None
-        if self._last_type.get(person_id) == event_type and event_type != "FALL_DETECTED":
+        if self._last_type.get(person_id) == event_type:
             return None
 
         event = SafetyEvent(

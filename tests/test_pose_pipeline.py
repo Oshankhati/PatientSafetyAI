@@ -22,6 +22,7 @@ from src.features.format_bridge import (
 from src.pose.keypoint_extractor import KeypointExtractor
 from src.pose.schemas import BoundingBox, FramePoseResult, PersonPose
 from src.pose.skeleton_visualizer import SkeletonVisualizer
+from src.tracking.iou_tracker import IoUTracker
 from src.utils.config_loader import load_config
 from src.utils.paths import project_root
 
@@ -87,6 +88,31 @@ def test_frame_person_selection() -> None:
     assert result.select_person().person_id == 3  # largest box
 
 
+def test_iou_tracker_keeps_ids_when_detection_order_changes() -> None:
+    tracker = IoUTracker(iou_threshold=0.3, max_missing_frames=1, id_start=100)
+    left = BoundingBox(0, 0, 20, 20)
+    right = BoundingBox(50, 50, 70, 70)
+    initial = tracker.update([left, right], frame_number=0)
+    reordered = tracker.update([right, left], frame_number=1)
+    assert initial == [100, 101]
+    assert reordered == [101, 100]
+
+    tracker.update([], frame_number=3)
+    fresh = tracker.update([left], frame_number=4)
+    assert fresh == [102]
+
+
+def test_iou_tracker_uses_motion_through_a_crossing() -> None:
+    tracker = IoUTracker(iou_threshold=0.3, max_missing_frames=3, id_start=200)
+    centers = ((10, 70), (17, 63), (24, 56), (31, 49), (39, 41), (47, 33))
+    for frame_number, positions in enumerate(centers):
+        boxes = [
+            BoundingBox(center - 10, 10, center + 10, 50)
+            for center in positions
+        ]
+        assert tracker.update(boxes, frame_number) == [200, 201]
+
+
 def test_visualizer_draws_without_error() -> None:
     frame = np.zeros((240, 320, 3), dtype=np.uint8)
     person = PersonPose(
@@ -102,6 +128,46 @@ def test_visualizer_draws_without_error() -> None:
     result = FramePoseResult(0, 0.0, [person])
     out = SkeletonVisualizer().draw_frame(frame.copy(), result, ["test"])
     assert out.shape == frame.shape
+
+
+def test_visualizer_matches_status_to_each_person_id(monkeypatch) -> None:
+    people = [
+        PersonPose(
+            person_id=1,
+            bounding_box=BoundingBox(0, 0, 20, 40),
+            keypoints=np.zeros((17, 2), dtype=np.float32),
+            keypoint_confidence=np.ones(17, dtype=np.float32),
+            keypoints_normalized=np.zeros((17, 2), dtype=np.float32),
+            frame_number=0,
+            timestamp=0.0,
+        ),
+        PersonPose(
+            person_id=2,
+            bounding_box=BoundingBox(30, 0, 50, 40),
+            keypoints=np.zeros((17, 2), dtype=np.float32),
+            keypoint_confidence=np.ones(17, dtype=np.float32),
+            keypoints_normalized=np.zeros((17, 2), dtype=np.float32),
+            frame_number=0,
+            timestamp=0.0,
+        ),
+    ]
+    result = FramePoseResult(0, 0.0, people)
+    statuses = [
+        {"person_id": 2, "risk": {"prediction_label": "FALL DETECTED"}},
+        {"person_id": 1, "risk": {"prediction_label": "NORMAL"}},
+    ]
+    visualizer = SkeletonVisualizer()
+    received = {}
+
+    def capture_status(frame, person, status):
+        received[person.person_id] = status
+        return frame
+
+    monkeypatch.setattr(visualizer, "draw_person", capture_status)
+    visualizer.draw_frame(np.zeros((60, 60, 3), dtype=np.uint8), result, person_status=statuses)
+
+    assert received[1] == statuses[1]
+    assert received[2] == statuses[0]
 
 
 def test_extractor_empty_result() -> None:

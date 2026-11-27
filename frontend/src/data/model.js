@@ -100,19 +100,29 @@ function buildPose(st, th) {
   const keypoints = mergeKeypoints(st.skeleton);
   const confs = (st.skeleton?.keypoint_confidence || []).map(Number).filter(Number.isFinite);
   const prediction = words(first(risk?.prediction_label, risk?.prediction, risk?.label));
-  const fallConfirmed = risk?.fall_confirmed === true || /fall/i.test(`${prediction || ''} ${risk?.risk_level || ''}`);
+  const fallConfirmed = typeof risk?.fall_confirmed === 'boolean'
+    ? risk.fall_confirmed
+    : /fall detected/i.test(prediction || '');
   const w = num(first(st.frame_width, st.skeleton?.frame_width)), h = num(first(st.frame_height, st.skeleton?.frame_height));
   return {
     keypoints, aspect: w && h ? w / h : null, patient: st.patient_id || '', room: st.room_id || '',
-    detConf: confs.length ? Math.round((confs.reduce((a, b) => a + b, 0) / confs.length) * 100) : null,
+    detConf: toPct(first(st.confidence, st.detection_confidence, st.skeleton?.detection_confidence))
+      ?? (confs.length ? Math.round((confs.reduce((a, b) => a + b, 0) / confs.length) * 100) : null),
     prediction, predConf: toPct(first(risk?.confidence, risk?.prediction_confidence, risk?.model_confidence)),
     score, level: fallConfirmed ? 'High' : levelOf(first(risk?.risk_level, risk?.level), score, th),
     signals: signalsOf(risk, st.signals), fps: first(st.fps, st.frame_rate) ?? '', frame: first(st.frame_number, st.frame) ?? '', fallConfirmed,
+    personId: st.person_id ?? null,
+    trackingStatus: st.tracking_status || 'TRACKED',
+    framesSinceSeen: num(st.frames_since_seen) || 0,
   };
 }
 
 export function buildViewModel(raw, th) {
   const pose = buildPose(raw.state, th);
+  const people = Array.isArray(raw.state?.people)
+    ? raw.state.people.map(person => buildPose(person, th)).filter(Boolean)
+    : [];
+  const performance = raw.state?.performance || null;
   const liveId = pose?.patient || null, liveRoom = pose?.room || null;
 
   const events = raw.events.map(mapEvent).sort((a, b) => b.raw - a.raw);
@@ -138,7 +148,7 @@ export function buildViewModel(raw, th) {
     confidence: e.confidence, risk: e.risk, detected: e.time, ago: e.date ? ago(e.date) : e.time, status: e.status,
   }));
 
-  return { pose, patients, rooms, events, alerts };
+  return { pose, people, performance, trackingMode: raw.state?.tracking_mode || null, patients, rooms, events, alerts };
 }
 
 /** Health cards derived from /health, the WebSocket and the age of the last pose frame. */

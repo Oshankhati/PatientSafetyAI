@@ -13,6 +13,7 @@ export default function Layout({
   children,
   banner,
   staff,
+  onLogout,
 }) {
   return (
     <div className="app-shell">
@@ -24,6 +25,7 @@ export default function Layout({
         healthy={healthy}
         total={total}
         staff={staff}
+        onLogout={onLogout}
       />
 
       <main className="main-area">

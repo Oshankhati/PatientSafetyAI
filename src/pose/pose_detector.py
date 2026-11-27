@@ -21,6 +21,7 @@ from src.pose.keypoint_extractor import KeypointExtractor
 from src.pose.schemas import FramePoseResult, PersonPose
 from src.pose.skeleton_visualizer import SkeletonVisualizer
 from src.utils.paths import project_root, resolve_path
+from src.tracking.iou_tracker import IoUTracker
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,8 @@ class PoseDetector:
         imgsz: int = 640,
         enable_tracking: bool = True,
         tracker: str = "bytetrack.yaml",
+        max_det: int = 10,
+        tracking_max_missing_frames: int = 30,
     ) -> None:
         self.model_path = resolve_path(model_path)
         self.device = device
@@ -45,8 +48,13 @@ class PoseDetector:
         self.imgsz = imgsz
         self.enable_tracking = enable_tracking
         self.tracker = tracker
+        self.max_det = max(1, int(max_det))
 
         self._model: Any | None = None
+        self._tracking_failed = False
+        self._fallback_tracker = IoUTracker(
+            max_missing_frames=tracking_max_missing_frames,
+        )
         self.extractor = KeypointExtractor(keypoint_conf_threshold)
         self.visualizer = SkeletonVisualizer(keypoint_conf_threshold)
 
@@ -96,11 +104,14 @@ class PoseDetector:
             "device": self.device,
             "conf": self.conf_threshold,
             "imgsz": self.imgsz,
+            "max_det": self.max_det,
             "verbose": False,
         }
 
+        inference_started = time.perf_counter()
+        tracking_mode = "none"
         try:
-            if self.enable_tracking and persist_tracking:
+            if self.enable_tracking and persist_tracking and not self._tracking_failed:
                 try:
                     results = self.model.track(
                         persist=True,
@@ -110,24 +121,54 @@ class PoseDetector:
                 except Exception as track_exc:
                     # Tracking deps (e.g. lap) may be missing; fall back to predict.
                     logger.warning(
-                        "Tracking unavailable (%s); falling back to detect-only mode",
+                        "Ultralytics tracking unavailable (%s); using IoU tracking fallback",
                         track_exc,
                     )
-                    self.enable_tracking = False
+                    self._tracking_failed = True
                     results = self.model.predict(**predict_kwargs)
+                    tracking_mode = "iou"
             else:
                 results = self.model.predict(**predict_kwargs)
+                if persist_tracking:
+                    tracking_mode = "iou"
         except Exception as exc:
             logger.error("YOLO inference failed on frame %s: %s", frame_number, exc)
             raise RuntimeError(f"YOLO Pose inference failed: {exc}") from exc
 
         result = results[0]
-        return self.extractor.extract(
+        pose = self.extractor.extract(
             result,
             frame_number=frame_number,
             timestamp=timestamp,
             frame_shape=frame.shape,
         )
+        pose.inference_latency_ms = (time.perf_counter() - inference_started) * 1000.0
+        if persist_tracking:
+            boxes = getattr(result, "boxes", None)
+            track_ids = getattr(boxes, "id", None)
+            has_native_ids = (
+                self.enable_tracking
+                and not self._tracking_failed
+                and track_ids is not None
+                and len(track_ids) == len(pose.persons)
+            )
+            if has_native_ids:
+                tracking_mode = "bytetrack"
+            else:
+                if self.enable_tracking and not self._tracking_failed and pose.persons:
+                    logger.warning(
+                        "Tracker returned no IDs; switching to IoU tracking fallback"
+                    )
+                    self._tracking_failed = True
+                tracking_mode = "iou"
+                fallback_ids = self._fallback_tracker.update(
+                    [person.bounding_box for person in pose.persons],
+                    frame_number,
+                )
+                for person, person_id in zip(pose.persons, fallback_ids):
+                    person.person_id = person_id
+        pose.tracking_mode = tracking_mode
+        return pose
 
     def extract_keypoints(self, result: FramePoseResult) -> list[PersonPose]:
         """Return person poses from a frame result (API convenience)."""
@@ -138,10 +179,16 @@ class PoseDetector:
         frame: np.ndarray,
         result: FramePoseResult,
         overlay_text: list[str] | None = None,
+        person_status: list[dict[str, Any]] | None = None,
     ) -> np.ndarray:
         """Draw boxes + skeletons on a copy of the frame."""
         canvas = frame.copy()
-        return self.visualizer.draw_frame(canvas, result, overlay_text=overlay_text)
+        return self.visualizer.draw_frame(
+            canvas,
+            result,
+            overlay_text=overlay_text,
+            person_status=person_status,
+        )
 
     def process_video(
         self,
@@ -206,6 +253,7 @@ class PoseDetector:
                     hud = [
                         f"Frame {frame_idx}",
                         f"Persons {pose.person_count}",
+                        f"Tracking {pose.tracking_mode or 'unknown'}",
                         f"FPS {pose.fps_hint:.1f}" if pose.fps_hint else "",
                     ]
                     vis = self.draw_skeleton(frame, pose, overlay_text=[h for h in hud if h])
@@ -305,6 +353,10 @@ class PoseDetector:
             imgsz=int(pose_cfg.get("imgsz", 640)),
             enable_tracking=bool(pose_cfg.get("enable_tracking", True)),
             tracker=str(pose_cfg.get("tracker", "bytetrack.yaml")),
+            max_det=int(pose_cfg.get("max_det", 10)),
+            tracking_max_missing_frames=int(
+                config.get("tracking", {}).get("max_missing_frames", 30)
+            ),
         )
 
 

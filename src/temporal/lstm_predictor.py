@@ -38,10 +38,12 @@ class LstmPredictor:
         model_path: str | Path = "models/upfall_lstm_best.keras",
         decision_threshold: float = 0.5,
         fall_class: int = 0,
+        feature_dim: int = 99,
     ) -> None:
         self.model_path = resolve_path(model_path)
         self.decision_threshold = decision_threshold
         self.fall_class = fall_class
+        self.feature_dim = int(feature_dim)
         self._model: Any | None = None
         self.available = False
         self.load_error: str | None = None
@@ -69,7 +71,7 @@ class LstmPredictor:
             self.available = False
 
     def predict_sequence(self, sequence: np.ndarray) -> dict[str, float | None]:
-        """Predict on shape (T, 99). Returns fall_probability in [0, 1] or Nones."""
+        """Predict on shape (T, feature_dim), returning fall probability or Nones."""
         if not self.available or self._model is None:
             return {
                 "p_class1": None,
@@ -78,8 +80,10 @@ class LstmPredictor:
             }
 
         x = np.asarray(sequence, dtype=np.float32)
-        if x.ndim != 2 or x.shape[1] != 99:
-            raise ValueError(f"Expected sequence shape (T, 99), got {x.shape}")
+        if x.ndim != 2 or x.shape[1] != self.feature_dim:
+            raise ValueError(
+                f"Expected sequence shape (T, {self.feature_dim}), got {x.shape}"
+            )
         batch = np.expand_dims(x, axis=0)
         try:
             p1 = float(np.asarray(self._model.predict(batch, verbose=0)).ravel()[0])

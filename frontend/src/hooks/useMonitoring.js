@@ -10,7 +10,11 @@ const riskPct = s => {
   const v = Number((s?.risk || s?.risk_assessment)?.risk_score);
   return Number.isFinite(v) ? Math.round(v <= 1 ? v * 100 : v) : null;
 };
-const hasPose = s => Boolean(s?.skeleton?.keypoints_normalized?.length || s?.skeleton?.keypoints?.length);
+const hasPose = s => Boolean(
+  s?.skeleton?.keypoints_normalized?.length
+  || s?.skeleton?.keypoints?.length
+  || s?.people?.some(person => person?.skeleton?.keypoints_normalized?.length),
+);
 
 function loadHistory() {
   try {
@@ -25,7 +29,7 @@ function loadHistory() {
  *  - listens on /ws/monitor so a new frame / fall shows up immediately
  *  - records every live risk score (per patient) for the risk-history charts
  */
-export default function useMonitoring() {
+export default function useMonitoring(token, onUnauthorized) {
   const [data, setData] = useState(EMPTY);
   const [updated, setUpdated] = useState(null);
   const [ws, setWs] = useState('connecting');
@@ -48,17 +52,22 @@ export default function useMonitoring() {
 
   const refresh = useCallback(async () => {
     try {
-      const d = await loadMonitoringData();
+      const d = await loadMonitoringData(token);
+      if (d.unauthorized) onUnauthorized?.();
       setData(d); setUpdated(new Date()); record(d.state);
     } catch (e) { setData({ ...EMPTY, errors: [e.message || 'Backend unavailable'] }); setUpdated(new Date()); }
-  }, [record]);
+  }, [record, token, onUnauthorized]);
 
   useEffect(() => { refresh(); const id = setInterval(refresh, POLL_MS); return () => clearInterval(id); }, [refresh]);
 
   useEffect(() => {
     let closed = false, socket, retry, debounce;
     const open = () => {
-      try { socket = new WebSocket(WS_URL); } catch { setWs('disconnected'); retry = setTimeout(open, 3000); return; }
+      try {
+        const url = new URL(WS_URL);
+        url.searchParams.set('token', token);
+        socket = new WebSocket(url);
+      } catch { setWs('disconnected'); retry = setTimeout(open, 3000); return; }
       setWs('connecting');
       socket.onopen = () => setWs('connected');
       socket.onmessage = ev => {
@@ -66,14 +75,20 @@ export default function useMonitoring() {
         if (msg.type === 'update' && msg.result) {
           setData(d => ({ ...d, state: msg.result })); record(msg.result);
           clearTimeout(debounce); debounce = setTimeout(refresh, 400); // pick up the newly stored event
-        } else if (msg.type === 'snapshot') { refresh(); }
+        } else if (msg.type === 'snapshot') {
+          if (msg.result) {
+            setData(d => ({ ...d, state: msg.result }));
+            record(msg.result);
+          }
+          refresh();
+        }
       };
       socket.onclose = () => { if (!closed) { setWs('disconnected'); retry = setTimeout(open, 3000); } };
       socket.onerror = () => socket.close();
     };
     open();
     return () => { closed = true; clearTimeout(retry); clearTimeout(debounce); socket?.close(); };
-  }, [record, refresh]);
+  }, [record, refresh, token]);
 
   return { ...data, online: Boolean(data.health), updated, refresh, ws, poseAt, history };
 }

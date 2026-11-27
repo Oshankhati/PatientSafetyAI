@@ -56,8 +56,10 @@ class RiskEngine:
         self.high_max = float(risk.get("high_max", 0.89))
         self.fall_min = float(risk.get("fall_min", 0.90))
         self.min_consecutive = int(risk.get("min_consecutive_frames", 5))
+        self.recovery_frames = max(1, int(risk.get("recovery_frames", 10)))
         self.high_risk_threshold = float(risk.get("high_risk_threshold", 0.70))
         self.fall_threshold = float(risk.get("fall_threshold", 0.90))
+        self.recovery_threshold = float(risk.get("recovery_threshold", self.low_max))
 
         self.w_lstm = float(weights.get("lstm", 0.35))
         self.w_posture = float(weights.get("posture", 0.20))
@@ -77,9 +79,18 @@ class RiskEngine:
             "unknown": 0.20,
         }
         self._consecutive: dict[int, int] = {}
+        self._fall_counts: dict[int, int] = {}
+        self._recovery_counts: dict[int, int] = {}
+        self._fall_latched: set[int] = set()
 
     def _clip01(self, value: float) -> float:
         return max(0.0, min(1.0, float(value)))
+
+    def forget_person(self, person_id: int) -> None:
+        self._consecutive.pop(person_id, None)
+        self._fall_counts.pop(person_id, None)
+        self._recovery_counts.pop(person_id, None)
+        self._fall_latched.discard(person_id)
 
     def score(
         self,
@@ -131,7 +142,26 @@ class RiskEngine:
             self._consecutive[person_id] = 0
 
         consec = self._consecutive.get(person_id, 0)
-        fall_confirmed = risk >= self.fall_threshold and consec >= self.min_consecutive
+        if risk >= self.fall_threshold:
+            self._fall_counts[person_id] = self._fall_counts.get(person_id, 0) + 1
+        else:
+            self._fall_counts[person_id] = 0
+
+        if person_id in self._fall_latched:
+            if risk <= self.recovery_threshold:
+                self._recovery_counts[person_id] = (
+                    self._recovery_counts.get(person_id, 0) + 1
+                )
+                if self._recovery_counts[person_id] >= self.recovery_frames:
+                    self._fall_latched.discard(person_id)
+                    self._recovery_counts[person_id] = 0
+            else:
+                self._recovery_counts[person_id] = 0
+        elif self._fall_counts[person_id] >= self.min_consecutive:
+            self._fall_latched.add(person_id)
+            self._recovery_counts[person_id] = 0
+
+        fall_confirmed = person_id in self._fall_latched
 
         if fall_confirmed:
             label = "FALL DETECTED"

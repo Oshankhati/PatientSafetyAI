@@ -1,0 +1,121 @@
+
+BACKEND (Terminal 1)
+
+cd D:\Doing
+.\.venv313\Scripts\Activate.ps1
+$env:PATIENTSAFETYAI_SECRET_KEY = "local-development-only-change-this"
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+
+
+FRONTEND (Terminal 2)
+
+cd D:\Doing\frontend
+npm run dev
+
+
+CAMERA DEMO (Terminal 3, instead of dashboard camera)
+
+cd D:\Doing
+.\.venv313\Scripts\Activate.ps1
+python demo.py --source 0 --publish-api http://127.0.0.1:8000
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PatientSafetyAI - Windows PowerShell run guide
+================================================
+
+Run these commands in Windows PowerShell.
+
+ONE-TIME SETUP
+--------------
+
+1. Activate the project's working Python environment and install dependencies:
+
+   cd D:\Doing
+   .\.venv313\Scripts\Activate.ps1
+   python -m pip install --upgrade pip
+   python -m pip install -r requirements.txt
+
+2. Install frontend dependencies:
+
+   cd D:\Doing\frontend
+   npm ci
+
+Use `.venv313` for this project: the default `.venv` on this computer uses
+Python 3.14, but the pinned TensorFlow 2.21.0 model dependency has no Python
+3.14 package. The `.venv313` environment uses Python 3.13 and has been verified
+with the LSTM model. Do not create `.venv` using Python 3.14 for this project.
+The project also expects `models\yolo11n-pose.pt` for live pose detection.
+
+START THE COMPLETE APPLICATION (TWO POWERSHELL TERMINALS)
+----------------------------------------------------------
+
+Terminal 1 - FastAPI backend (keep this terminal open):
+
+   cd D:\Doing
+   .\.venv313\Scripts\Activate.ps1
+   $env:PATIENTSAFETYAI_SECRET_KEY = "local-development-only-change-this"
+   python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+
+This development key is for local use only; never use it in production.
+Check the backend at http://127.0.0.1:8000/health.
+
+Terminal 2 - React dashboard:
+
+   cd D:\Doing\frontend
+   npm run dev
+
+Open the Vite URL printed in the terminal (normally http://localhost:5175).
+Create a staff account on the sign-up screen, sign in, open Live Monitoring,
+and select Start camera. The browser dashboard receives skeleton keypoints
+from the backend without saving raw video.
+
+OPTIONAL: RUN THE PYTHON DEMO AS THE CAMERA INPUT INSTEAD
+--------------------------------------------------------
+
+Use this in a third terminal instead of clicking Start camera in the dashboard.
+Do not run both camera inputs at the same time.
+
+   cd D:\Doing
+   .\.venv313\Scripts\Activate.ps1
+   python demo.py --source 0 --publish-api http://127.0.0.1:8000
+
+The webcam demo opens a preview; press q to stop. It sends keypoints and risk
+metadata to the API, not raw video. To use the provided video, replace `--source 0`
+with `--source datasets\samples\bus_clip.mp4 --no-display`.
+
+OPTIONAL: RUN A POSE-ONLY IMAGE DEMO
+------------------------------------
+
+   cd D:\Doing
+   .\.venv313\Scripts\Activate.ps1
+   python demo_pose.py --image datasets\samples\bus.jpg --no-display
+
+TESTS AND FRONTEND PRODUCTION BUILD
+-----------------------------------
+
+   cd D:\Doing
+   .\.venv313\Scripts\Activate.ps1
+   python -m pytest tests -q -k "not slow"
+
+   cd D:\Doing\frontend
+   npm run build
+
+API docs: http://127.0.0.1:8000/docs
+Stop each server or demo with Ctrl+C (or q in the webcam preview).

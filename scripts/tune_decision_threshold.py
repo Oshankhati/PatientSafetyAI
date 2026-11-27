@@ -1,7 +1,4 @@
-"""Sweep LSTM decision threshold on SUBJECT5 (subject-wise holdout).
-
-Does not retrain and does not overwrite the baseline experiment folder.
-"""
+"""Tune a COCO-17 model threshold on validation data only; never load SUBJECT5."""
 
 from __future__ import annotations
 
@@ -16,60 +13,50 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.features.fall_dataset import load_fall_dataset_split
 from src.temporal.threshold_tune import select_operating_point, sweep_thresholds
-from src.utils.paths import project_root
 
 
 def main() -> int:
-    root = project_root()
-    data = root / "processed" / "sequences" / "split"
-    model_path = root / "models" / "upfall_lstm_best.keras"
-    x_path = data / "X_test_normalized.npy"
-    y_path = data / "y_test.npy"
+    model_path = ROOT / "models" / "coco17_xy_lstm_best.keras"
     if not model_path.exists():
-        print(f"Model missing: {model_path}\nTrain with python train_lstm.py")
-        return 1
-    if not x_path.exists() or not y_path.exists():
-        print(f"Test arrays missing under {data}")
-        return 1
+        raise FileNotFoundError(
+            f"Model missing: {model_path}\n"
+            "Train it with: python scripts/train_fall_experiment.py"
+        )
 
     import tensorflow as tf
 
-    x_test = np.load(x_path)
-    y_test = np.load(y_path)
+    data = load_fall_dataset_split("coco17_xy", include_test=False)
     model = tf.keras.models.load_model(model_path)
-    p1 = model.predict(x_test, verbose=0).ravel()
-    rows = sweep_thresholds(y_test, p1)
-    chosen = select_operating_point(rows)
+    p_class1 = model.predict(data.x_val, verbose=0).ravel()
+    rows = sweep_thresholds(
+        data.y_val,
+        p_class1,
+        thresholds=np.round(np.arange(0.05, 0.951, 0.01), 2),
+    )
+    selected = select_operating_point(rows)
+
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out_dir = root / "results" / f"lstm_threshold_sweep_{stamp}"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = ROOT / "results" / f"coco17_validation_threshold_{stamp}"
+    out_dir.mkdir(parents=True, exist_ok=False)
     payload = {
-        "model": str(model_path.relative_to(root)),
-        "protocol": "subject-wise holdout SUBJECT5; threshold sweep only (no retraining)",
-        "input_shape": list(x_test.shape),
-        "baseline_threshold": 0.5,
-        "selected": chosen,
+        "model": str(model_path.relative_to(ROOT)),
+        "protocol": "SUBJECT4 validation only; SUBJECT5 test samples and labels not read",
+        "validation_sequences": int(len(data.y_val)),
+        "validation_class_counts": {
+            str(label): int(count)
+            for label, count in zip(*np.unique(data.y_val, return_counts=True))
+        },
+        "selected": selected,
         "sweep": rows,
         "note": (
-            "Class 0 = fall-phase (minority). Raising the class-1 threshold "
-            "increases fall recall. Not clinically validated."
+            "Class 0 is fall. If constraints_met is false, no tested threshold "
+            "met both validation constraints; do not claim that it did."
         ),
     }
     (out_dir / "metrics.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    lines = [
-        "threshold  acc    f1_macro  fall_recall  fall_prec  FPR    FNR",
-    ]
-    for r in rows:
-        lines.append(
-            f"{r['threshold']:.2f}       {r['accuracy']:.3f}  {r['f1_macro']:.3f}     "
-            f"{r['fall_recall']:.3f}        {r['fall_precision']:.3f}     "
-            f"{r['false_positive_rate']:.3f}  {r['false_negative_rate']:.3f}"
-        )
-    lines.append(f"\nSelected operating point: {json.dumps(chosen, indent=2)}")
-    report = "\n".join(lines) + "\n"
-    (out_dir / "classification_report.txt").write_text(report, encoding="utf-8")
-    print(report)
+    print(json.dumps(payload, indent=2))
     print(f"Wrote {out_dir}")
     return 0
 

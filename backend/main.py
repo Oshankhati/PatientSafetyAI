@@ -10,14 +10,20 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from backend.auth import router as auth_router
-from backend.database import initialize_database
+from backend.auth import get_staff_from_token, require_staff, router as auth_router
+from backend.database import (
+    acknowledge_event,
+    get_app_settings,
+    get_event_acknowledgements,
+    initialize_database,
+    save_app_settings,
+)
 from backend.schemas import (
     FramePredictRequest,
     HealthResponse,
@@ -109,7 +115,8 @@ app.add_middleware(
         "http://127.0.0.1:5174",
         "http://localhost:5175",
         "http://127.0.0.1:5175",
-        "*",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -131,12 +138,18 @@ def health() -> HealthResponse:
 
 @app.get("/risk")
 @app.get("/monitor/state")
-def get_risk() -> dict[str, Any]:
+def get_risk(staff: dict = Depends(require_staff)) -> dict[str, Any]:
     mon = get_monitor()
     if mon.last_status is not None:
         return mon.last_status
     if mon.last_risk is None:
-        return {"risk": None, "message": "No frames processed yet.", "skeleton": None}
+        return {
+            "risk": None,
+            "message": "No frames processed yet.",
+            "skeleton": None,
+            "people": [],
+            "tracked_person_count": 0,
+        }
     return {
         "patient_id": mon.patient_id,
         "room_id": mon.room_id,
@@ -153,30 +166,84 @@ def get_risk() -> dict[str, Any]:
 
 
 @app.get("/events")
-def get_events() -> dict[str, Any]:
+def get_events(staff: dict = Depends(require_staff)) -> dict[str, Any]:
     return {"events": get_monitor().events.all()}
 
 
 @app.get("/events/latest")
-def get_events_latest(n: int = 20) -> dict[str, Any]:
+def get_events_latest(n: int = 20, staff: dict = Depends(require_staff)) -> dict[str, Any]:
     return {"events": get_monitor().events.latest(n)}
 
 
 @app.get("/patients")
-def get_patients() -> dict[str, Any]:
+def get_patients(staff: dict = Depends(require_staff)) -> dict[str, Any]:
     return {"patients": _patients}
 
 
 @app.get("/rooms")
-def get_rooms() -> dict[str, Any]:
+def get_rooms(staff: dict = Depends(require_staff)) -> dict[str, Any]:
     return {"rooms": _rooms}
 
 
 @app.post("/rooms")
-def post_room(room: RoomConfig) -> dict[str, Any]:
+def post_room(room: RoomConfig, staff: dict = Depends(require_staff)) -> dict[str, Any]:
     entry = room.model_dump()
     _rooms.append(entry)
     return {"ok": True, "room": entry}
+
+
+@app.get("/settings")
+def read_settings(staff: dict = Depends(require_staff)) -> dict[str, Any]:
+    settings = get_app_settings()
+    if settings is None:
+        settings = {
+            "ai": {
+                "yolo": "0.50",
+                "medium": "0.40",
+                "high": "0.70",
+                "fall": "0.90",
+                "seqLen": "20",
+                "stride": "5",
+                "minFrames": "3",
+            },
+            "camera": {
+                "source": "RTSP stream",
+                "cameraId": "",
+                "resolution": "1920 × 1080",
+                "fps": "",
+            },
+        }
+    return {"settings": settings}
+
+
+@app.put("/settings")
+def write_settings(
+    payload: dict[str, Any],
+    staff: dict = Depends(require_staff),
+) -> dict[str, Any]:
+    settings = payload.get("settings")
+    if not isinstance(settings, dict) or not isinstance(settings.get("ai"), dict) or not isinstance(settings.get("camera"), dict):
+        raise HTTPException(status_code=422, detail="Settings must include ai and camera objects.")
+    save_app_settings(settings)
+    return {"ok": True, "settings": settings}
+
+
+@app.get("/events/acknowledgements")
+def read_acknowledgements(staff: dict = Depends(require_staff)) -> dict[str, Any]:
+    return {"acknowledgements": get_event_acknowledgements()}
+
+
+@app.post("/events/{event_id}/acknowledge")
+def write_acknowledgement(
+    event_id: str,
+    staff: dict = Depends(require_staff),
+) -> dict[str, Any]:
+    if not event_id.strip():
+        raise HTTPException(status_code=422, detail="Event ID cannot be empty.")
+    return {
+        "acknowledgement": acknowledge_event(event_id, staff["staff_id"]),
+        "staff": staff,
+    }
 
 
 def _person_from_request(item, frame_number: int, timestamp: float) -> PersonPose:
@@ -233,8 +300,12 @@ def _person_from_request(item, frame_number: int, timestamp: float) -> PersonPos
 @app.post("/predict", response_model=PredictResponse)
 @app.post("/predict/frame", response_model=PredictResponse)
 async def predict_frame(body: FramePredictRequest) -> PredictResponse:
-    if not body.persons:
-        raise HTTPException(status_code=400, detail="No persons provided")
+    person_ids = [person.person_id for person in body.persons]
+    if len(person_ids) != len(set(person_ids)):
+        raise HTTPException(
+            status_code=422,
+            detail="Each person in a frame must have a unique tracking ID.",
+        )
 
     persons = [
         _person_from_request(p, body.frame_number, body.timestamp)
@@ -342,6 +413,7 @@ async def start_camera(
     source: int = 0,
     patient_id: str = "Patient 01",
     room_id: str = "ICU-101",
+    staff: dict = Depends(require_staff),
 ) -> dict[str, Any]:
     global _camera_thread, _camera_stop_event, _camera_status
 
@@ -380,7 +452,7 @@ async def start_camera(
 
 
 @app.post("/camera/stop")
-async def stop_camera() -> dict[str, Any]:
+async def stop_camera(staff: dict = Depends(require_staff)) -> dict[str, Any]:
     global _camera_status
 
     if _camera_stop_event is not None:
@@ -393,10 +465,13 @@ async def stop_camera() -> dict[str, Any]:
 
 
 @app.get("/camera/status")
-def camera_status() -> dict[str, Any]:
+def camera_status(staff: dict = Depends(require_staff)) -> dict[str, Any]:
     return _camera_status
 @app.post("/predict/video", response_model=PredictResponse)
-def predict_video(body: VideoPredictRequest) -> PredictResponse:
+def predict_video(
+    body: VideoPredictRequest,
+    staff: dict = Depends(require_staff),
+) -> PredictResponse:
     path = resolve_path(body.video_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Video not found: {path}")
@@ -442,6 +517,16 @@ def predict_video(body: VideoPredictRequest) -> PredictResponse:
 
 @app.websocket("/ws/monitor")
 async def ws_monitor(ws: WebSocket) -> None:
+    token = ws.query_params.get("token")
+    if not token:
+        await ws.close(code=4401, reason="Authentication required")
+        return
+    try:
+        get_staff_from_token(token)
+    except HTTPException:
+        await ws.close(code=4401, reason="Invalid or expired access token")
+        return
+
     await ws.accept()
     _ws_clients.append(ws)
     try:
@@ -449,6 +534,7 @@ async def ws_monitor(ws: WebSocket) -> None:
         await ws.send_json(
             {
                 "type": "snapshot",
+                "result": mon.last_status,
                 "risk": None if mon.last_risk is None else mon.last_risk.to_dict(),
                 "events": mon.events.latest(10),
             }
@@ -458,6 +544,7 @@ async def ws_monitor(ws: WebSocket) -> None:
             await ws.send_json(
                 {
                     "type": "snapshot",
+                    "result": mon.last_status,
                     "risk": None if mon.last_risk is None else mon.last_risk.to_dict(),
                     "events": mon.events.latest(10),
                 }

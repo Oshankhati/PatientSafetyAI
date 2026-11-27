@@ -19,7 +19,8 @@ export default function Sidebar({
   online,
   healthy = 0,
   total = 0,
-  staff
+  staff,
+  onLogout,
 }) {
   const fullName = staff?.full_name || 'Staff Member';
   const role = staff?.role || 'Nurse';
@@ -89,6 +90,7 @@ export default function Sidebar({
             className="icon-btn"
             title="Sign out"
             aria-label="Sign out"
+            onClick={onLogout}
           >
             <Icon name="logout" size={17} />
           </button>
